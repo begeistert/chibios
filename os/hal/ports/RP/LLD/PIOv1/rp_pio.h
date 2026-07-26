@@ -251,6 +251,13 @@
 
 /**
  * @brief   Type of a PIO ISR callback.
+ * @note    A block has a single interrupt line shared by its four state
+ *          machines, so the callback of every allocated state machine is
+ *          invoked on every interrupt of the block, each time with the full
+ *          IRQn_INTS word: a per state machine callback has to select its
+ *          own bits with the @p PIO_IRQ_* macros. Work that must happen
+ *          once per interrupt, acknowledging the source in particular,
+ *          belongs in a block callback, see @p pioSetBlockCallbackI().
  *
  * @param[in] p         parameter for the registered function
  * @param[in] ints      content of the IRQn_INTS register
@@ -391,6 +398,10 @@ extern "C" {
                          int32_t offset, uint32_t length);
   void pioSmInit(const rp_pio_sm_t *smp, uint32_t initial_pc,
                  const rp_pio_sm_config_t *cfgp);
+  void pioSetBlockCallbackI(const rp_pio_block_t *block,
+                            rp_pioisr_t func, void *param);
+  void pioSetBlockCallback(const rp_pio_block_t *block,
+                           rp_pioisr_t func, void *param);
   uint32_t pioGetSmAllocatedMask(const rp_pio_block_t *block);
   uint32_t pioGetImemAllocatedMask(const rp_pio_block_t *block);
 #if (RP_PIO_HAS_GPIOBASE == TRUE) || defined(__DOXYGEN__)
