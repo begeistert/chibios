@@ -1178,6 +1178,95 @@ __STATIC_INLINE void pioSmDisableInterruptX(const rp_pio_sm_t *smp,
 }
 
 /**
+ * @brief   Enables block level interrupts on the current core.
+ * @details The IRQ flags a program raises with the IRQ instruction, and the
+ *          FIFO level interrupts, are properties of the block: the mask is
+ *          the same one @p pioSmEnableInterruptX() takes, but no state
+ *          machine has to be allocated to reach it.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] mask      interrupt mask (combination of PIO_IRQ_* bits)
+ *
+ * @special
+ */
+__STATIC_INLINE void pioEnableInterruptX(const rp_pio_block_t *block,
+                                          uint32_t mask) {
+
+  if (SIO->CPUID == 0U) {
+    block->pio->SET.IRQ0_INTE = mask;
+  }
+  else {
+    block->pio->SET.IRQ1_INTE = mask;
+  }
+}
+
+/**
+ * @brief   Disables block level interrupts.
+ * @note    Clears both cores' INTE unconditionally (avoids CPUID check).
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] mask      interrupt mask (combination of PIO_IRQ_* bits)
+ *
+ * @special
+ */
+__STATIC_INLINE void pioDisableInterruptX(const rp_pio_block_t *block,
+                                           uint32_t mask) {
+
+  block->pio->CLR.IRQ0_INTE = mask;
+  block->pio->CLR.IRQ1_INTE = mask;
+}
+
+/**
+ * @brief   Raises a PIO IRQ flag from the CPU side.
+ * @details The eight IRQ flags of a block are shared between the state
+ *          machines and the CPU, which is how a program is signalled or
+ *          released from a @p WAIT IRQ.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] irq       flag index (0..7)
+ *
+ * @special
+ */
+__STATIC_INLINE void pioForceIrqX(const rp_pio_block_t *block,
+                                   uint32_t irq) {
+
+  osalDbgCheck(irq < 8U);
+
+  block->pio->IRQ_FORCE = 1U << irq;
+}
+
+/**
+ * @brief   Clears a PIO IRQ flag.
+ * @note    The IRQ register is write-1-to-clear, so only the named flag is
+ *          affected.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] irq       flag index (0..7)
+ *
+ * @special
+ */
+__STATIC_INLINE void pioClearIrqX(const rp_pio_block_t *block,
+                                   uint32_t irq) {
+
+  osalDbgCheck(irq < 8U);
+
+  block->pio->IRQ = 1U << irq;
+}
+
+/**
+ * @brief   Returns the raised PIO IRQ flags of a block.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @return              The eight IRQ flags of the block.
+ *
+ * @special
+ */
+__STATIC_INLINE uint32_t pioGetIrqX(const rp_pio_block_t *block) {
+
+  return block->pio->IRQ;
+}
+
+/**
  * @brief   Writes a word to the TX FIFO, blocking while full.
  *
  * @param[in] smp       pointer to a rp_pio_sm_t structure
