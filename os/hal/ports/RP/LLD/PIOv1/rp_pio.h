@@ -851,6 +851,34 @@ __STATIC_INLINE void pioSmSetExecctrlX(const rp_pio_sm_t *smp,
 }
 
 /**
+ * @brief   Sets the program wrap range of a running state machine.
+ * @details Only the wrap fields of EXECCTRL are modified, everything else
+ *          in the register keeps its value. Repointing the wrap at another
+ *          program without disturbing the pin and side-set configuration is
+ *          how a single state machine is reused for several programs.
+ * @note    Both values are absolute instruction memory addresses, as in
+ *          @p pioSmConfigSetWrapX().
+ *
+ * @param[in] smp       pointer to a rp_pio_sm_t structure
+ * @param[in] bottom    address to wrap from, i.e. wrap_target (0..31)
+ * @param[in] top       address to wrap after, i.e. wrap (0..31)
+ *
+ * @special
+ */
+__STATIC_INLINE void pioSmSetWrapX(const rp_pio_sm_t *smp,
+                                   uint32_t bottom, uint32_t top) {
+  uint32_t execctrl;
+
+  osalDbgCheck((bottom < 32U) && (top < 32U));
+
+  execctrl = smp->block->pio->SM[smp->smidx].EXECCTRL;
+  smp->block->pio->SM[smp->smidx].EXECCTRL =
+    (execctrl & ~(PIO_SM_EXECCTRL_WRAP_BOTTOM_Msk |
+                  PIO_SM_EXECCTRL_WRAP_TOP_Msk)) |
+    PIO_SM_EXECCTRL_WRAP(bottom, top);
+}
+
+/**
  * @brief   Sets the shift control of a state machine.
  *
  * @param[in] smp       pointer to a rp_pio_sm_t structure
