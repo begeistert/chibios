@@ -196,6 +196,16 @@
 #define PIO_SM_SHIFTCTRL_PULL_THRESH_Msk  (0x1FU << PIO_SM_SHIFTCTRL_PULL_THRESH_Pos)
 #define PIO_SM_SHIFTCTRL_FJOIN_TX       (1U << 30U)
 #define PIO_SM_SHIFTCTRL_FJOIN_RX       (1U << 31U)
+#if (RP_PIO_HAS_RXF_PUTGET == TRUE) || defined(__DOXYGEN__)
+/**
+ * @brief   RX FIFO usable as random-access registers read by the SM.
+ */
+#define PIO_SM_SHIFTCTRL_FJOIN_RX_GET   (1U << 14U)
+/**
+ * @brief   RX FIFO usable as random-access registers written by the SM.
+ */
+#define PIO_SM_SHIFTCTRL_FJOIN_RX_PUT   (1U << 15U)
+#endif
 /** @} */
 
 /**
@@ -306,9 +316,17 @@ typedef struct {
  * @brief   FIFO joining modes.
  */
 typedef enum {
-  RP_PIO_FIFO_JOIN_NONE = 0,            /**< @brief Two 4-deep FIFOs.      */
-  RP_PIO_FIFO_JOIN_TX   = 1,            /**< @brief 8-deep TX, no RX.      */
-  RP_PIO_FIFO_JOIN_RX   = 2             /**< @brief 8-deep RX, no TX.      */
+  RP_PIO_FIFO_JOIN_NONE   = 0,          /**< @brief Two 4-deep FIFOs.      */
+  RP_PIO_FIFO_JOIN_TX     = 1,          /**< @brief 8-deep TX, no RX.      */
+  RP_PIO_FIFO_JOIN_RX     = 2,          /**< @brief 8-deep RX, no TX.      */
+#if (RP_PIO_HAS_RXF_PUTGET == TRUE) || defined(__DOXYGEN__)
+  RP_PIO_FIFO_JOIN_RX_GET = 3,          /**< @brief RX as random-access
+                                             registers read by the SM.     */
+  RP_PIO_FIFO_JOIN_RX_PUT = 4,          /**< @brief RX as random-access
+                                             registers written by the SM.  */
+  RP_PIO_FIFO_JOIN_RX_PUTGET = 5        /**< @brief RX as random-access
+                                             registers, both directions.   */
+#endif
 } rp_pio_fifo_join_t;
 
 /**
@@ -685,6 +703,10 @@ __STATIC_INLINE void pioSmConfigSetOutShiftX(rp_pio_sm_config_t *cfgp,
  * @brief   Sets the FIFO joining mode.
  * @note    The hardware flushes both FIFOs whenever the joining mode
  *          changes.
+ * @note    On devices with the @p RP_PIO_HAS_RXF_PUTGET capability the RX
+ *          FIFO can instead be turned into four random-access registers
+ *          addressed by the state machine, readable, writable or both. The
+ *          RX FIFO is not usable as a FIFO in those modes.
  *
  * @param[in,out] cfgp  pointer to a rp_pio_sm_config_t structure
  * @param[in] join      joining mode
@@ -693,13 +715,41 @@ __STATIC_INLINE void pioSmConfigSetOutShiftX(rp_pio_sm_config_t *cfgp,
  */
 __STATIC_INLINE void pioSmConfigSetFifoJoinX(rp_pio_sm_config_t *cfgp,
                                             rp_pio_fifo_join_t join) {
+  uint32_t bits;
 
-  osalDbgCheck((cfgp != NULL) && ((uint32_t)join <= RP_PIO_FIFO_JOIN_RX));
+  osalDbgCheck(cfgp != NULL);
+
+  switch (join) {
+  case RP_PIO_FIFO_JOIN_TX:
+    bits = PIO_SM_SHIFTCTRL_FJOIN_TX;
+    break;
+  case RP_PIO_FIFO_JOIN_RX:
+    bits = PIO_SM_SHIFTCTRL_FJOIN_RX;
+    break;
+#if RP_PIO_HAS_RXF_PUTGET == TRUE
+  case RP_PIO_FIFO_JOIN_RX_GET:
+    bits = PIO_SM_SHIFTCTRL_FJOIN_RX_GET;
+    break;
+  case RP_PIO_FIFO_JOIN_RX_PUT:
+    bits = PIO_SM_SHIFTCTRL_FJOIN_RX_PUT;
+    break;
+  case RP_PIO_FIFO_JOIN_RX_PUTGET:
+    bits = PIO_SM_SHIFTCTRL_FJOIN_RX_GET | PIO_SM_SHIFTCTRL_FJOIN_RX_PUT;
+    break;
+#endif
+  default:
+    osalDbgCheck(join == RP_PIO_FIFO_JOIN_NONE);
+    bits = 0U;
+    break;
+  }
 
   cfgp->shiftctrl = (cfgp->shiftctrl & ~(PIO_SM_SHIFTCTRL_FJOIN_TX |
-                                         PIO_SM_SHIFTCTRL_FJOIN_RX)) |
-                    ((join == RP_PIO_FIFO_JOIN_TX) ? PIO_SM_SHIFTCTRL_FJOIN_TX : 0U) |
-                    ((join == RP_PIO_FIFO_JOIN_RX) ? PIO_SM_SHIFTCTRL_FJOIN_RX : 0U);
+                                         PIO_SM_SHIFTCTRL_FJOIN_RX
+#if RP_PIO_HAS_RXF_PUTGET == TRUE
+                                         | PIO_SM_SHIFTCTRL_FJOIN_RX_GET
+                                         | PIO_SM_SHIFTCTRL_FJOIN_RX_PUT
+#endif
+                                        )) | bits;
 }
 
 /**

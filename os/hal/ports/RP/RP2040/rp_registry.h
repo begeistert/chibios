@@ -56,6 +56,7 @@
 #define RP_HAS_PIO2                         FALSE
 #define RP_PIO_NUM_BLOCKS                   2
 #define RP_PIO_HAS_GPIOBASE                 FALSE
+#define RP_PIO_HAS_RXF_PUTGET               FALSE
 
 /* TIMER attributes.*/
 #define RP_HAS_TIMER0                       TRUE
