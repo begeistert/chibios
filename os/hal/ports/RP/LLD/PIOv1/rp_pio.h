@@ -1297,13 +1297,86 @@ __STATIC_INLINE uint32_t pioSmGet(const rp_pio_sm_t *smp) {
 }
 
 /**
- * @brief   Routes a GPIO pin to the PIO block that owns this state machine.
+ * @brief   Routes a GPIO pin to a PIO block.
  * @details Sets IO_BANK0 FUNCSEL for the given pin to PIO0, PIO1, or PIO2
- *          based on the block index of the state machine.
+ *          based on the block index.
  * @note    Only the pin multiplexer is programmed; the pad control
  *          register (input enable, schmitt trigger, drive strength, and
  *          on the RP2350 the isolation latch) is left untouched. Use
  *          @p pioGpioInitX() for complete pin routing.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] gpio      absolute GPIO pin number
+ *
+ * @special
+ */
+__STATIC_INLINE void pioSetPinFunctionX(const rp_pio_block_t *block,
+                                         uint32_t gpio) {
+  static const uint32_t funcsel[] = {
+    RP_PIO_FUNCSEL_PIO0,
+    RP_PIO_FUNCSEL_PIO1,
+#if RP_HAS_PIO2 == TRUE
+    RP_PIO_FUNCSEL_PIO2,
+#endif
+  };
+
+  osalDbgCheck(gpio < RP_GPIO_NUM_LINES);
+
+  IO_BANK0->GPIO[gpio].CTRL = funcsel[block->pioidx];
+}
+
+/**
+ * @brief   Routes a GPIO pin to a PIO block with explicit pad control.
+ * @details Programs both the pin multiplexer and the pad control register.
+ *          On the RP2350 the pad is reprogrammed while still isolated and
+ *          the isolation latch is cleared only after the multiplexer
+ *          selects the PIO function, so the pin transitions glitch-free
+ *          from its reset state.
+ * @note    The pad control register is written as a whole: pulls, drive
+ *          strength and every other pad option not present in
+ *          @p padbits are cleared. Pass the required pulls explicitly,
+ *          e.g. @p RP_PIO_PAD_DEFAULT | @p RP_PIO_PAD_PUE for an
+ *          open-drain bus with pull-up.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] gpio      absolute GPIO pin number
+ * @param[in] padbits   pad control value, combination of @p RP_PIO_PAD_*
+ *                      bits (excluding @p RP_PIO_PAD_ISO)
+ *
+ * @special
+ */
+__STATIC_INLINE void pioGpioInitPad(const rp_pio_block_t *block,
+                                    uint32_t gpio, uint32_t padbits) {
+
+  osalDbgCheck((gpio < RP_GPIO_NUM_LINES) && (padbits <= 0xFFU));
+
+#if defined(RP2350)
+  PADS_BANK0->GPIO[gpio] = padbits | RP_PIO_PAD_ISO;
+  pioSetPinFunctionX(block, gpio);
+  PADS_BANK0->GPIO[gpio] = padbits;
+#else
+  PADS_BANK0->GPIO[gpio] = padbits;
+  pioSetPinFunctionX(block, gpio);
+#endif
+}
+
+/**
+ * @brief   Routes a GPIO pin to a PIO block with default pad control.
+ * @details Equivalent to @p pioGpioInitPad() with @p RP_PIO_PAD_DEFAULT:
+ *          input enabled with schmitt trigger, 4mA drive, no pulls.
+ *
+ * @param[in] block     pointer to the PIO block descriptor
+ * @param[in] gpio      absolute GPIO pin number
+ *
+ * @special
+ */
+__STATIC_INLINE void pioGpioInit(const rp_pio_block_t *block, uint32_t gpio) {
+
+  pioGpioInitPad(block, gpio, RP_PIO_PAD_DEFAULT);
+}
+
+/**
+ * @brief   Routes a GPIO pin to the PIO block that owns this state machine.
  * @note    The @p gpio parameter is an absolute GPIO number. On devices
  *          with the @p RP_PIO_HAS_GPIOBASE capability (RP2350) the pin
  *          fields written into PINCTRL/EXECCTRL are instead relative to
@@ -1317,31 +1390,13 @@ __STATIC_INLINE uint32_t pioSmGet(const rp_pio_sm_t *smp) {
  */
 __STATIC_INLINE void pioSmSetPinFunctionX(const rp_pio_sm_t *smp,
                                            uint32_t gpio) {
-  static const uint32_t funcsel[] = {
-    RP_PIO_FUNCSEL_PIO0,
-    RP_PIO_FUNCSEL_PIO1,
-#if RP_HAS_PIO2 == TRUE
-    RP_PIO_FUNCSEL_PIO2,
-#endif
-  };
 
-  osalDbgCheck(gpio < RP_GPIO_NUM_LINES);
-
-  IO_BANK0->GPIO[gpio].CTRL = funcsel[smp->block->pioidx];
+  pioSetPinFunctionX(smp->block, gpio);
 }
 
 /**
- * @brief   Routes a GPIO pin to the PIO block with explicit pad control.
- * @details Programs both the pin multiplexer and the pad control register.
- *          On the RP2350 the pad is reprogrammed while still isolated and
- *          the isolation latch is cleared only after the multiplexer
- *          selects the PIO function, so the pin transitions glitch-free
- *          from its reset state.
- * @note    The pad control register is written as a whole: pulls, drive
- *          strength and every other pad option not present in
- *          @p padbits are cleared. Pass the required pulls explicitly,
- *          e.g. @p RP_PIO_PAD_DEFAULT | @p RP_PIO_PAD_PUE for an
- *          open-drain bus with pull-up.
+ * @brief   Routes a GPIO pin with explicit pad control to the block that
+ *          owns this state machine.
  *
  * @param[in] smp       pointer to a rp_pio_sm_t structure
  * @param[in] gpio      absolute GPIO pin number
@@ -1353,22 +1408,12 @@ __STATIC_INLINE void pioSmSetPinFunctionX(const rp_pio_sm_t *smp,
 __STATIC_INLINE void pioGpioInitPadX(const rp_pio_sm_t *smp,
                                      uint32_t gpio, uint32_t padbits) {
 
-  osalDbgCheck((gpio < RP_GPIO_NUM_LINES) && (padbits <= 0xFFU));
-
-#if defined(RP2350)
-  PADS_BANK0->GPIO[gpio] = padbits | RP_PIO_PAD_ISO;
-  pioSmSetPinFunctionX(smp, gpio);
-  PADS_BANK0->GPIO[gpio] = padbits;
-#else
-  PADS_BANK0->GPIO[gpio] = padbits;
-  pioSmSetPinFunctionX(smp, gpio);
-#endif
+  pioGpioInitPad(smp->block, gpio, padbits);
 }
 
 /**
- * @brief   Routes a GPIO pin to the PIO block with default pad control.
- * @details Equivalent to @p pioGpioInitPadX() with @p RP_PIO_PAD_DEFAULT:
- *          input enabled with schmitt trigger, 4mA drive, no pulls.
+ * @brief   Routes a GPIO pin with default pad control to the block that
+ *          owns this state machine.
  *
  * @param[in] smp       pointer to a rp_pio_sm_t structure
  * @param[in] gpio      absolute GPIO pin number
@@ -1377,7 +1422,7 @@ __STATIC_INLINE void pioGpioInitPadX(const rp_pio_sm_t *smp,
  */
 __STATIC_INLINE void pioGpioInitX(const rp_pio_sm_t *smp, uint32_t gpio) {
 
-  pioGpioInitPadX(smp, gpio, RP_PIO_PAD_DEFAULT);
+  pioGpioInitPad(smp->block, gpio, RP_PIO_PAD_DEFAULT);
 }
 
 /**
