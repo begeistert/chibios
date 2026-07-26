@@ -1038,6 +1038,46 @@ __STATIC_INLINE void pioSmClearFifosX(const rp_pio_sm_t *smp) {
 }
 
 /**
+ * @brief   Drains the TX FIFO of a state machine.
+ * @details Discards every word left in the TX FIFO by executing the
+ *          instruction that consumes one, which depends on the shift
+ *          configuration: under autopull an @p OUT NULL, 32 moves a word
+ *          out of the OSR and refills it from the FIFO, otherwise a
+ *          @p PULL noblock takes one directly.
+ * @note    Unlike @p pioSmClearFifosX() this leaves the RX FIFO untouched,
+ *          which matters when discarding pending output without losing
+ *          input already captured.
+ * @note    The loop only terminates if the state machine is not stalled
+ *          waiting on something else, so the caller decides the bound; a
+ *          state machine that is not consuming would otherwise spin here
+ *          forever.
+ *
+ * @param[in] smp       pointer to a rp_pio_sm_t structure
+ * @param[in] limit     maximum number of instructions to execute
+ * @return              The operation status.
+ * @retval false        if the FIFO did not drain within the limit.
+ * @retval true         if the FIFO is empty.
+ *
+ * @special
+ */
+__STATIC_INLINE bool pioSmDrainTxFifoX(const rp_pio_sm_t *smp,
+                                       uint32_t limit) {
+  uint32_t shiftctrl = smp->block->pio->SM[smp->smidx].SHIFTCTRL;
+  uint16_t instr = ((shiftctrl & PIO_SM_SHIFTCTRL_AUTOPULL) != 0U) ?
+                   0x6060U :   /* OUT NULL, 32 */
+                   0x8000U;    /* PULL noblock */
+
+  while (!pioSmIsTxEmptyX(smp)) {
+    if (limit-- == 0U) {
+      return false;
+    }
+    pioSmExecX(smp, instr);
+  }
+
+  return true;
+}
+
+/**
  * @brief   Clears FDEBUG flags for a state machine.
  *
  * @param[in] smp       pointer to a rp_pio_sm_t structure
